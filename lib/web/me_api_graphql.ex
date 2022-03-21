@@ -1,12 +1,15 @@
-if Code.ensure_loaded?(Bonfire.GraphQL) do
+if Bonfire.Common.Extend.module_enabled?(Bonfire.API.GraphQL) do
 defmodule Bonfire.Me.API.GraphQL do
   use Absinthe.Schema.Notation
+  use Bonfire.Common.Utils
   import Absinthe.Resolution.Helpers
-  alias Bonfire.GraphQL
-  alias Bonfire.Common.Utils
+  import Where
+  alias Bonfire.API.GraphQL
   alias Bonfire.Data.Identity.User
   alias Bonfire.Me.Users
   alias Bonfire.Me.Accounts
+
+  import_types Absinthe.Plug.Types
 
   object :user do
     field(:id, :id)
@@ -93,10 +96,27 @@ defmodule Bonfire.Me.API.GraphQL do
   object :profile do
     field(:name, :string)
     field(:summary, :string)
+    field :website, :string
+    field :location, :string
+
+    field(:icon, :string) do
+      resolve &icon/3
+    end
+    field(:image, :string) do
+      resolve &image/3
+    end
   end
+
   input_object :profile_input do
     field(:name, :string)
     field(:summary, :string)
+    field :website, :string
+    field :location, :string
+  end
+
+  input_object :images_upload do
+    field :icon, :upload
+    field :image, :upload
   end
 
   object :character do
@@ -122,10 +142,10 @@ defmodule Bonfire.Me.API.GraphQL do
       resolve &get_user/3
     end
 
-    @desc "Get information about and for the current user"
+    @desc "Get information about and for the current account and/or user"
     field :me, :me do
 
-      resolve &get_user/2
+      resolve &get_me/3
     end
 
   end
@@ -167,6 +187,7 @@ defmodule Bonfire.Me.API.GraphQL do
     field :create_user, :me do
       arg(:profile, non_null(:profile_input))
       arg(:character, non_null(:character_input))
+      arg(:images, :images_upload)
 
       resolve(&create_user/2)
     end
@@ -186,7 +207,7 @@ defmodule Bonfire.Me.API.GraphQL do
       arg(:token, non_null(:string))
 
       resolve(&confirm_email/2)
-      middleware(&Bonfire.GraphQL.Auth.set_context_from_resolution/2) # FIXME: this should auto-login
+      middleware(&Bonfire.API.GraphQL.Auth.set_context_from_resolution/2) # FIXME: this should auto-login
     end
 
     @desc "Request an email to be sent to reset a forgotten password"
@@ -223,8 +244,9 @@ defmodule Bonfire.Me.API.GraphQL do
 
     @desc "Edit user profile"
     field :update_user, :me do
-      arg(:profile, non_null(:profile_input))
+      arg(:profile, :profile_input)
       # arg(:character, non_null(:character_input))
+      arg(:images, :images_upload)
 
       resolve(&update_user/2)
     end
@@ -251,20 +273,19 @@ defmodule Bonfire.Me.API.GraphQL do
   end
 
   defp get_user(%User{} = parent, args, info) do
-    # IO.inspect(parent: parent)
+    # debug(parent: parent)
     {:ok, parent}
   end
 
   defp get_user(_parent, args, info) do
-    # IO.inspect(args: args)
     {:ok, GraphQL.current_user(info)}
   end
 
-  defp get_user(_args, info) do
-    {:ok, GraphQL.current_user(info)}
+  defp get_me(_parent, _args, info) do
+    {:ok, GraphQL.current_user(info) || GraphQL.current_account(info)}
   end
 
-  defp my_feed(%User{} = parent, args, info) do
+  defp my_feed(%{} = parent, args, _info) do
     Bonfire.Social.FeedActivities.my_feed(parent)
     |> feed()
   end
@@ -274,8 +295,8 @@ defmodule Bonfire.Me.API.GraphQL do
     |> feed()
   end
 
-  defp all_flags(%User{} = user, args, info) do
-    Bonfire.Social.Flags.list_paginated([], current_user: user)
+  defp all_flags(%{} = user_or_account, args, info) do
+    Bonfire.Social.Flags.list_paginated([], user_or_account)
     |> feed()
   end
 
@@ -285,11 +306,12 @@ defmodule Bonfire.Me.API.GraphQL do
       |> Enum.map(& Map.get(&1, :activity))
     }
   end
+  defp feed(_), do: {:ok, nil}
 
   defp account_id(%{accounted: %{account_id: account_id}}, _, _) do
     {:ok, account_id}
   end
-    defp account_id(_, _, %{context: %{current_account_id: current_account_id} = _context}) do
+  defp account_id(_, _, %{context: %{current_account_id: current_account_id} = _context}) do
     {:ok, current_account_id}
   end
   defp account_id(_, _, %{context: %{current_account_id: current_account_id} = _context}) do
@@ -318,9 +340,12 @@ defmodule Bonfire.Me.API.GraphQL do
   end
 
   defp create_user(args, info) do
-    account = GraphQL.current_account(info)
+    account = GraphQL.current_account(info) #|| Accounts.get_by_email("test@me.space")
     if account do
-      Users.create(args, account)
+      with {:ok, user} <- Users.create(args, account),
+           {:ok, uploaded} <- maybe_upload(user, args[:images], info) do
+            Bonfire.Me.Users.update(user, %{"profile"=> uploaded}) #|> debug("updated")
+      end
     else
       {:error, "Not authenticated"}
     end
@@ -370,17 +395,20 @@ defmodule Bonfire.Me.API.GraphQL do
     end
   end
 
-  def update_user(params, info) do
-    user = GraphQL.current_user(info)
+  def update_user(args, info) do
+    user = GraphQL.current_user(info) #|| (Users.by_username("test") |> ok_or)
     if user do
-      Users.update(user, params, GraphQL.current_account(info))
+      with {:ok, uploaded} <- maybe_upload(user, args[:images], info) do
+            args = args |> Map.put(:profile, Map.merge(Map.get(args, :profile, %{}), uploaded)) #|> debug("args") # TODO: clean up
+            Bonfire.Me.Users.update(user, args, GraphQL.current_account(info)) #|> debug("updated")
+      end
     else
       {:error, "Not authenticated"}
     end
   end
 
   defp add_team_member(%{username_or_email: username_or_email} = args, info) do
-    if Utils.module_enabled?(Bonfire.Data.SharedUser) and Utils.module_enabled?(Bonfire.Me.SharedUsers) do
+    if module_enabled?(Bonfire.Data.SharedUser) and module_enabled?(Bonfire.Me.SharedUsers) do
       user = GraphQL.current_user(info)
       if user do
         with %{} = _shared_user <- Bonfire.Me.SharedUsers.add_account(user, username_or_email, Utils.stringify_keys(args)) do
@@ -394,6 +422,25 @@ defmodule Bonfire.Me.API.GraphQL do
     end
   end
 
+  def icon(thing, _, _info) do
+    {:ok, Bonfire.Common.Utils.avatar_url(thing)}
+  end
+
+  def image(thing, _, _info) do
+    {:ok, Bonfire.Common.Utils.image_url(thing)}
+  end
+
+  def maybe_upload(user, changes, info) do
+    if module_enabled?(Bonfire.Files.GraphQL) do
+      debug("API - attempt to upload")
+      Bonfire.Files.GraphQL.upload(user, changes, info)
+    else
+      error("API upload via GraphQL is not implemented")
+      {:ok, %{}}
+    end
+  end
 
 end
+else
+  IO.inspect("Me.API.GraphQL Skip")
 end

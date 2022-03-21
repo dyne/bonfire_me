@@ -25,14 +25,13 @@ defmodule Bonfire.Me.Web.LoggedDashboardLive do
         page: "dashboard",
         smart_input: true,
         has_private_tab: false,
-        smart_input_prompt: l("Write something meaningful"),
         page_title: l("Bonfire Dashboard"),
         feed_title: l("My Feed"),
         feed_module: feed_module,
         selected_tab: "feed",
         go: ""
         )
-        # |> assign_global(to_circles: Bonfire.Me.Users.Circles.list_my_defaults(socket))
+        # |> assign_global(to_circles: Bonfire.Boundaries.Circles.list_my_defaults(socket))
       }
     end
 

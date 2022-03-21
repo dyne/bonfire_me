@@ -24,16 +24,15 @@ defmodule Bonfire.Me.DataCase do
       import Ecto.Changeset
       import Ecto.Query
       import Bonfire.Me.DataCase
+
+      import Bonfire.Me.Fake
+
     end
   end
 
   setup tags do
 
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(repo())
-
-    unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(repo(), {:shared, self()})
-    end
+    Bonfire.Common.Test.Interactive.setup_test_repo(tags)
 
     :ok
   end

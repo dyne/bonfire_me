@@ -5,22 +5,22 @@ defmodule Bonfire.Me.Web.LoginController do
   alias Bonfire.Me.Users
   alias Bonfire.Me.Web.LoginLive
   alias Bonfire.Common.Utils
-  require Logger
+  import Where
 
   def index(conn, _) do # GET only supports 'go'
     conn = fetch_query_params(conn)
     paint(conn, form_cs(Map.take(conn.query_params, [:go, "go"])))
   end
 
-  def create(conn, params) do
-    params = Map.get(params, "login_fields", %{})
-    form = Accounts.changeset(:login, params)
-    case Accounts.login(form) do
+  def create(conn, form) do
+    params = Map.get(form, "login_fields", form)
+    cs = Accounts.changeset(:login, params)
+    case Accounts.login(cs) do
       {:ok, account, user} -> logged_in(account, user, conn, form)
       {:error, changeset} -> paint(conn, changeset)
       _ ->
-        Logger.error("LoginController: unhandled error")
-        paint(conn, form)
+        error("LoginController: unhandled error")
+        paint(conn, cs)
     end
   end
 

@@ -14,8 +14,8 @@ defmodule Bonfire.Me.Accounts do
   alias Bonfire.Me.Users
   alias Ecto.Changeset
   import Bonfire.Me.Integration
-  alias Bonfire.Common.Utils
-  require Logger
+  use Bonfire.Common.Utils
+  import Where
 
   def get_current(nil), do: nil
   def get_current(id) when is_binary(id),
@@ -232,7 +232,7 @@ defmodule Bonfire.Me.Accounts do
   end
 
   defp send_confirm_email(false, account, _opts) do
-    Logger.debug("Skip email confirmation")
+    debug("Skip email confirmation")
    {:ok, account}
   end
 
@@ -298,13 +298,13 @@ defmodule Bonfire.Me.Accounts do
   end
 
   def redeemable_invite?(invite) do
-    if Utils.module_enabled?(Bonfire.Invite.Links) and Utils.module_enabled?(Bonfire.InviteLink) do
+    if module_enabled?(Bonfire.Invite.Links) and module_enabled?(Bonfire.InviteLink) do
       Bonfire.Invite.Links.redeemable?(invite)
     end
   end
 
   def maybe_redeem_invite(data, opts) do
-    if Utils.module_enabled?(Bonfire.Invite.Links) and Utils.module_enabled?(Bonfire.InviteLink) do
+    if module_enabled?(Bonfire.Invite.Links) and module_enabled?(Bonfire.InviteLink) do
       Bonfire.Invite.Links.redeem(opts[:invite])
     end
     data
@@ -316,6 +316,10 @@ defmodule Bonfire.Me.Accounts do
     |> Changeset.add_error(:form, "invite_only")
   end
 
+  defp delete_deps(account) do
+    users = Users.by_account(account)
+    Users.delete(users)
+  end
 
   ## misc
 

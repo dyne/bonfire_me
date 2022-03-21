@@ -30,7 +30,7 @@ defmodule Bonfire.Me.ConnCase do
 
       alias Bonfire.Me.Fake
       import Bonfire.Me.Fake
-      # alias Bonfire.Me.Web.Router.Helpers, as: Routes
+      use Bonfire.Common.Utils
 
       # The default endpoint for testing
       @endpoint Bonfire.Common.Config.get!(:endpoint_module)
@@ -41,11 +41,7 @@ defmodule Bonfire.Me.ConnCase do
 
     import Bonfire.Me.Integration
 
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(repo())
-
-    unless tags[:async] do
-      Ecto.Adapters.SQL.Sandbox.mode(repo(), {:shared, self()})
-    end
+    Bonfire.Common.Test.Interactive.setup_test_repo(tags)
 
     {:ok, []}
   end

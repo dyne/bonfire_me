@@ -1,6 +1,7 @@
 defmodule Bonfire.Me.Web.ProfileLive do
   use Bonfire.Web, :surface_view
   import Bonfire.Me.Integration
+  import Where
 
   alias Bonfire.Me.Fake
   alias Bonfire.Web.LivePlugs
@@ -16,7 +17,12 @@ defmodule Bonfire.Me.Web.ProfileLive do
     ]
   end
 
+  defp mounted(%{"remote_follow"=> _, "username"=> username} = params, _session, socket) do
+
+  end
+
   defp mounted(params, _session, socket) do
+    # dump(params)
 
     current_user = current_user(socket)
     current_username = e(current_user, :character, :username, nil)
@@ -33,16 +39,17 @@ defmodule Bonfire.Me.Web.ProfileLive do
       username ->
         get_user(username)
     end
-    # IO.inspect(user: user)
 
-    if user do
+    # debug(user)
 
-      # following = if current_user && current_user.id != user.id && module_enabled?(Bonfire.Social.Follows) && Bonfire.Social.Follows.following?(current_user, user), do: [user.id] |> IO.inspect(label: "following")
+    if user && ( current_username || is_local?(user) ) do # show remote users only to logged in users
+
+      # following = if current_user && current_user.id != user.id && module_enabled?(Bonfire.Social.Follows) && Bonfire.Social.Follows.following?(current_user, user), do: [user.id] |> debug("following")
 
       page_title = if current_username == e(user, :character, :username, ""), do: l( "Your profile"), else: e(user, :profile, :name, l "Someone") <> "'s profile"
 
-      smart_input_prompt = if current_username == e(user, :character, :username, ""), do: l( "Write something..."), else: l("Write something for ") <> e(user, :profile, :name, l("this person"))
-
+      # smart_input_prompt = if current_username == e(user, :character, :username, ""), do: l( "Write something..."), else: l("Write something for ") <> e(user, :profile, :name, l("this person"))
+      smart_input_prompt = nil
       smart_input_text = if current_username == e(user, :character, :username, ""), do:
       "", else: "@"<>e(user, :character, :username, "")<>" "
 
@@ -69,11 +76,26 @@ defmodule Bonfire.Me.Web.ProfileLive do
         # to_circles: [{e(user, :profile, :name, e(user, :character, :username, l "someone")), e(user, :id, nil)}]
       )}
     else
-      {:ok,
-        socket
-        |> put_flash(:error, l "Profile not found")
-        |> push_redirect(to: "/error")
-      }
+      if user do
+        if Map.get(params, "remote_interaction") do # redir to login and then come back to this page
+          {:ok,
+            socket
+            |> put_flash(:info, l("Please login first, and then: ")<>" "<>e(socket, :assigns, :flash, :info, ""))
+            |> push_redirect(to: path(:login) <> go_query(path(user)))
+          }
+        else # redir to remote profile
+          {:ok,
+            socket
+            |> redirect(external: canonical_url(user))
+          }
+        end
+      else
+        {:ok,
+          socket
+          |> put_flash(:error, l "Profile not found")
+          |> push_redirect(to: "/error")
+        }
+      end
     end
   end
 
@@ -92,7 +114,7 @@ defmodule Bonfire.Me.Web.ProfileLive do
   def do_handle_params(%{"tab" => "posts" = tab} = _params, _url, socket) do
     user = e(socket, :assigns, :user, nil)
 
-    feed = if module_enabled?(Bonfire.Social.Posts), do: Bonfire.Social.Posts.list_by(user, socket) #|> IO.inspect
+    feed = if module_enabled?(Bonfire.Social.Posts), do: Bonfire.Social.Posts.list_by(user, socket) |> debug("posts")
 
     {:noreply,
      assign(socket,
@@ -105,7 +127,7 @@ defmodule Bonfire.Me.Web.ProfileLive do
   def do_handle_params(%{"tab" => "boosts" = tab} = _params, _url, socket) do
     user = e(socket, :assigns, :user, nil)
 
-    feed = if module_enabled?(Bonfire.Social.Boosts), do: Bonfire.Social.Boosts.list_by(user, socket) #|> debug("boosts")
+    feed = if module_enabled?(Bonfire.Social.Likes), do: Bonfire.Social.Likes.list_by(user, socket) |> debug("likes")
 
     {:noreply,
       assign(socket,
@@ -121,7 +143,7 @@ defmodule Bonfire.Me.Web.ProfileLive do
 
     feed_id = if user && module_enabled?(Bonfire.Social.Feeds), do: Bonfire.Social.Feeds.feed_id(:outbox, user)
     feed = if feed_id && module_enabled?(Bonfire.Social.FeedActivities), do: Bonfire.Social.FeedActivities.feed(feed_id, socket)
-  #  IO.inspect(feed: feed)
+  #  debug(feed: feed)
 
   {:noreply,
     assign(socket,
@@ -136,13 +158,16 @@ defmodule Bonfire.Me.Web.ProfileLive do
     current_user = current_user(socket)
     user = e(socket, :assigns, :user, nil)
 
-    smart_input_prompt = if e(current_user, :character, :username, "") == e(user, :character, :username, ""), do: l( "Write a private note to self..."), else: l("Write a private message for ") <> e(user, :profile, :name, l "this person")
+    page_title = if e(current_user, :character, :username, "") == e(user, :character, :username, ""), do: l( "My messages"), else: l("Messages with")<>" "<>e(user, :profile, :name, l "someone")
+
+    # smart_input_prompt = if e(current_user, :character, :username, "") == e(user, :character, :username, ""), do: l( "Write a private note to self..."), else: l("Send a private message") <> e(user, :profile, :name, l "this person")
+    smart_input_prompt = l("Send a private message")
 
     smart_input_text = if e(current_user, :character, :username, nil) != e(user, :character, :username, nil),
     do: "@"<>e(user, :character, :username, "")<>" ",
     else: ""
 
-    feed = if current_user, do: if module_enabled?(Bonfire.Social.Messages), do: Bonfire.Social.Messages.list(current_user, user) #|> IO.inspect(label: "messages")
+    feed = if current_user, do: if module_enabled?(Bonfire.Social.Messages), do: Bonfire.Social.Messages.list(current_user, user) #|> debug("messages")
 
     {:noreply,
      assign(socket,
@@ -150,6 +175,7 @@ defmodule Bonfire.Me.Web.ProfileLive do
        feed: e(feed, :edges, []),
      )
     |> assign_global(
+      page_title: page_title,
       smart_input_prompt: smart_input_prompt,
       smart_input_text: smart_input_text,
       to_circles: [{e(user, :profile, :name, e(user, :character, :username, l "someone")), e(user, :id, nil)}],
