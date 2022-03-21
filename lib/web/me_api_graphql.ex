@@ -201,7 +201,20 @@ defmodule Bonfire.Me.API.GraphQL do
 
     @desc "Change account password"
     field :change_password, :me do
-      arg(:old_password, non_null(:string))
+      @desc """
+      The token you get from `requestResetPassword` mutation.
+      It takes precedence over `oldPassword`.
+      The user needn't to be logged in
+      """
+      arg(:token, :string)
+
+      @desc """
+      The old password of the user.
+      `token` takes precedence over it.
+      The user must be logged in.
+      """
+      arg(:old_password, :string)
+
       arg(:password, non_null(:string))
       arg(:password_confirmation, non_null(:string))
 
@@ -335,11 +348,25 @@ defmodule Bonfire.Me.API.GraphQL do
   end
 
   defp change_password(args, info) do
-    account = GraphQL.current_account(info)
-    if account do
-      Accounts.change_password(account, Utils.stringify_keys(args))
-    else
-      {:error, "Not authenticated"}
+    case args do
+      %{token: tok} ->
+        case Accounts.confirm_email(tok, confirm_action: :change_password) do
+          {:ok, accnt} ->
+            Accounts.change_password(accnt, Utils.stringify_keys(args), resetting_password: true)
+
+          {:error, _} ->
+            {:error, "bad token"}
+        end
+
+      %{old_password: _} ->
+        if accnt = GraphQL.current_account(info) do
+          Accounts.change_password(accnt, Utils.stringify_keys(args))
+        else
+          {:error, "not authenticated"}
+        end
+
+      _ ->
+        {:error, "either token or oldPassword must be provided"}
     end
   end
 
