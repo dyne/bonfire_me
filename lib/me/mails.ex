@@ -10,19 +10,23 @@ defmodule Bonfire.Me.Mails do
   import Bonfire.Web.Gettext.Helpers
 
   def confirm_email(account, opts \\ []) do
-
     case opts[:confirm_action] do
-     :forgot_password -> forgot_password(account)
-     :login -> forgot_password(account)
-      _ -> signup_confirm_email(account)
+      :forgot_password -> forgot_password(account, opts)
+      :login -> forgot_password(account, opts)
+       _ -> signup_confirm_email(account, opts)
     end
-
   end
 
-  def signup_confirm_email(%Account{email: %{confirm_token: confirm_token}}=account) when is_binary(confirm_token) do
-
+  def signup_confirm_email(%Account{email: %{confirm_token: confirm_token}} = account, opts) when is_binary(confirm_token) do
     app_name = Application.get_env(:bonfire, :app_name, "Bonfire")
-    url = url(Bonfire.Me.Web.ConfirmEmailController, [:show, confirm_token])
+
+    u = opts[:url]
+    url =
+      if u && String.contains?(u, ":token") do
+        String.replace(u, ":token", confirm_token, global: false)
+      else
+        url(Bonfire.Me.Web.ConfirmEmailController, [:show, confirm_token])
+      end
 
     if Bonfire.Common.Config.get(:env) != :test, do: Logger.warn("Email confirmation link: #{url}")
 
@@ -41,13 +45,20 @@ defmodule Bonfire.Me.Mails do
     # |> IO.inspect
   end
 
-  def forgot_password(%Account{email: %{confirm_token: confirm_token}}=account) when is_binary(confirm_token) do
+  def forgot_password(%Account{email: %{confirm_token: confirm_token}} = account, opts) when is_binary(confirm_token) do
     conf =
       Bonfire.Common.Config.get_ext(:bonfire_me, __MODULE__, [])
       |> Keyword.get(:forgot_password_email, [])
 
     app_name = Application.get_env(:bonfire, :app_name, "Bonfire")
-    url = url(Bonfire.Me.Web.ForgotPasswordController, confirm_token)
+
+    u = opts[:url]
+    url =
+      if u && String.contains?(u, ":token") do
+        String.replace(u, ":token", confirm_token, global: false)
+      else
+        url(Bonfire.Me.Web.ForgotPasswordController, confirm_token)
+      end
 
     new_email()
     |> assign(:current_account, account)

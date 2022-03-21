@@ -251,8 +251,8 @@ defmodule Bonfire.Me.Accounts do
 
   ### forgot/change password
 
-  def request_forgot_password(params) do
-    request_confirm_email(params, confirm_action: :forgot_password)
+  def request_forgot_password(params, opts) do
+    request_confirm_email(params, Keyword.put(opts, :confirm_action, :forgot_password))
   end
 
 

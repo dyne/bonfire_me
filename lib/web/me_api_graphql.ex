@@ -135,12 +135,28 @@ defmodule Bonfire.Me.API.GraphQL do
   #     arg(:password, non_null(:string))
   # end
 
-  object :me_mutations do
+  @url_desc """
+  The URL to be used for the email.
+  For example, "http://example.com/foo/bar/:token" would produce something
+  like "http://example.com/foo/bar/G3CCS32WU5ZBJXDG7DOJCQARD".
 
+  If the string does not contain ":token" part anywhere, it will be
+  simply ingored and the default URL will be used.
+
+  The back-end just replaces the first occurrence of ":token" with
+  the generated token.
+
+  It is not checked whether the field is actually a valid URL.
+  """
+
+  object :me_mutations do
     @desc "Register a new account. Returns the created `account_id`"
     field :signup, :string do
       arg(:email, non_null(:string))
       arg(:password, non_null(:string))
+
+      @desc @url_desc
+      arg(:url, :string)
 
       arg(:invite_code, :string)
 
@@ -159,6 +175,9 @@ defmodule Bonfire.Me.API.GraphQL do
     field :request_confirm_email, :string do
       arg(:email, non_null(:string))
 
+      @desc @url_desc
+      arg(:url, :string)
+
       resolve(&request_confirm_email/2)
     end
 
@@ -173,6 +192,9 @@ defmodule Bonfire.Me.API.GraphQL do
     @desc "Request an email to be sent to reset a forgotten password"
     field :request_reset_password, :string do
       arg(:email, non_null(:string))
+
+      @desc @url_desc
+      arg(:url, :string)
 
       resolve(&request_forgot_password/2)
     end
@@ -277,7 +299,7 @@ defmodule Bonfire.Me.API.GraphQL do
       email: %{email_address: args[:email]},
       credential: %{password: args[:password]}
     } #|> IO.inspect
-    with {:ok, account} <- Accounts.signup(params, invite: args[:invite_code]) do
+    with {:ok, account} <- Accounts.signup(params, invite: args[:invite_code], url: args[:url]) do
       {:ok, Map.get(account, :id)}
     end
   end
@@ -301,13 +323,13 @@ defmodule Bonfire.Me.API.GraphQL do
   end
 
   defp request_confirm_email(args, _info) do
-    with {:ok, status, _} <- Accounts.request_confirm_email(args) do
+    with {:ok, status, _} <- Accounts.request_confirm_email(args, url: args[:url]) do
       {:ok, status}
     end
   end
 
   defp request_forgot_password(args, _info) do
-    with {:ok, status, _} <- Accounts.request_forgot_password(args) do
+    with {:ok, status, _} <- Accounts.request_forgot_password(args, url: args[:url]) do
       {:ok, status}
     end
   end
