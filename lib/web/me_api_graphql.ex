@@ -1,9 +1,11 @@
+# SPDX-License-Identifier: AGPL-3.0-only
 if Bonfire.Common.Extend.module_enabled?(Bonfire.API.GraphQL) do
 defmodule Bonfire.Me.API.GraphQL do
   use Absinthe.Schema.Notation
   use Bonfire.Common.Utils
   import Absinthe.Resolution.Helpers
   import Where
+
   alias Bonfire.API.GraphQL
   alias Bonfire.Data.Identity.User
   alias Bonfire.Me.Users
@@ -340,14 +342,15 @@ defmodule Bonfire.Me.API.GraphQL do
   end
 
   defp create_user(args, info) do
-    account = GraphQL.current_account(info) #|| Accounts.get_by_email("test@me.space")
+    account = GraphQL.current_account(info)
+              # || Accounts.get_by_email("test@me.space") # only for testing
     if account do
       with {:ok, user} <- Users.create(args, account),
            {:ok, uploaded} <- maybe_upload(user, args[:images], info) do
             Bonfire.Me.Users.update(user, %{"profile"=> uploaded}) #|> debug("updated")
       end
     else
-      {:error, "Not authenticated"}
+      {:error, "Account not authenticated"}
     end
   end
 

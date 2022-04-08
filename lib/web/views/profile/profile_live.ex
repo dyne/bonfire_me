@@ -1,6 +1,6 @@
 defmodule Bonfire.Me.Web.ProfileLive do
   use Bonfire.Web, :surface_view
-  import Bonfire.Me.Integration
+  alias Bonfire.Me.Integration
   import Where
 
   alias Bonfire.Me.Fake
@@ -18,7 +18,7 @@ defmodule Bonfire.Me.Web.ProfileLive do
   end
 
   defp mounted(%{"remote_follow"=> _, "username"=> username} = params, _session, socket) do
-
+    # TODO?
   end
 
   defp mounted(params, _session, socket) do
@@ -39,10 +39,11 @@ defmodule Bonfire.Me.Web.ProfileLive do
       username ->
         get_user(username)
     end
+    |> repo().maybe_preload(:shared_user)
 
     # debug(user)
 
-    if user && ( current_username || is_local?(user) ) do # show remote users only to logged in users
+    if user && ( current_username || Integration.is_local?(user) ) do # show remote users only to logged in users
 
       # following = if current_user && current_user.id != user.id && module_enabled?(Bonfire.Social.Follows) && Bonfire.Social.Follows.following?(current_user, user), do: [user.id] |> debug("following")
 
@@ -100,6 +101,8 @@ defmodule Bonfire.Me.Web.ProfileLive do
   end
 
   def get_user(username) do
+    username = String.trim_trailing(username, "@"<>Bonfire.Common.URIs.instance_domain())
+
     with {:ok, user} <- Bonfire.Me.Users.by_username(username) do
       user
     else _ -> # handle other character types beyond User
@@ -114,7 +117,8 @@ defmodule Bonfire.Me.Web.ProfileLive do
   def do_handle_params(%{"tab" => "posts" = tab} = _params, _url, socket) do
     user = e(socket, :assigns, :user, nil)
 
-    feed = if module_enabled?(Bonfire.Social.Posts), do: Bonfire.Social.Posts.list_by(user, socket) |> debug("posts")
+    feed = if module_enabled?(Bonfire.Social.Posts), do: Bonfire.Social.Posts.list_by(user, socket)
+    #|> debug("posts")
 
     {:noreply,
      assign(socket,
@@ -127,7 +131,8 @@ defmodule Bonfire.Me.Web.ProfileLive do
   def do_handle_params(%{"tab" => "boosts" = tab} = _params, _url, socket) do
     user = e(socket, :assigns, :user, nil)
 
-    feed = if module_enabled?(Bonfire.Social.Likes), do: Bonfire.Social.Likes.list_by(user, socket) |> debug("likes")
+    feed = if module_enabled?(Bonfire.Social.Boosts), do: Bonfire.Social.Boosts.list_by(user, current_user: current_user(socket))
+    |> debug("boosts")
 
     {:noreply,
       assign(socket,
@@ -219,7 +224,18 @@ defmodule Bonfire.Me.Web.ProfileLive do
      )}
   end
 
-  def do_handle_params(%{} = _params, _url, socket) do
+  def do_handle_params(%{"username" => username} = _params, url, socket) do
+    # dump(url, "profile url")
+
+    if String.contains?(url, "%40"<>username) do
+      debug("rewrite encoded @ in URL")
+      {:noreply, push_patch(socket, to: "/@"<>username, replace: true)}
+    else
+      do_handle_params(%{"tab" => "timeline"}, nil, socket)
+    end
+  end
+
+  def do_handle_params(_params, url, socket) do
     # default tab
     do_handle_params(%{"tab" => "timeline"}, nil, socket)
   end
