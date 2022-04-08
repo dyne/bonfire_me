@@ -92,6 +92,8 @@ defmodule Bonfire.Me.API.GraphQL do
       resolve dataloader(Pointers.Pointer, args: %{my: :followed})
     end
 
+    @desc "a bearer token used for authentication"
+    field :token, :string
   end
 
 
@@ -357,6 +359,7 @@ defmodule Bonfire.Me.API.GraphQL do
   defp confirm_email(%{token: token} = _args, _info) do
     with {:ok, account} <- Accounts.confirm_email(token) do
       {:ok, %{
+        token: GraphQL.Auth.token_new(account.id),
         current_account: account,
         current_account_id: Map.get(account, :id)
       }}
