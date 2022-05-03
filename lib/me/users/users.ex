@@ -95,8 +95,13 @@ defmodule Bonfire.Me.Users do
       post_create(user)
     end
   end
-  def create(params, extra) when not is_struct(params),
-    do: create(changeset(:create, params, extra))
+  def create(params, extra) when not is_struct(params) do
+    maybe_make_admin = extra !=:remote && is_first_user?()
+    params
+    |> changeset(:create, ..., extra)
+    |> Changesets.put_assoc(:instance_admin, %{is_instance_admin: maybe_make_admin})  # FIXME
+    |> create()
+  end
 
   defp post_create(%{} = user) do
 
@@ -129,10 +134,10 @@ defmodule Bonfire.Me.Users do
   end
   def revoke_admin(%User{}=user), do: update_is_admin(user, false)
 
-  defp update_is_admin(%User{}=user, make_admin?) do
+  defp update_is_admin(%User{}=user, make_admin_or_revoke) do
     user
     |> repo().preload(:instance_admin)
-    |> Changeset.cast(%{instance_admin: %{is_instance_admin: make_admin?}}, [])
+    |> Changeset.cast(%{instance_admin: %{is_instance_admin: make_admin_or_revoke}}, [])
     |> Changeset.cast_assoc(:instance_admin)
     |> repo().update()
   end
@@ -250,6 +255,7 @@ defmodule Bonfire.Me.Users do
   def changeset(name , user \\ %User{}, params, extra)
 
   def changeset(:create, user, params, %Account{}=account) do
+
     params
     |> User.changeset(user, ...)
     |> Changesets.put_assoc(:accounted, %{account_id: account.id})
@@ -358,11 +364,11 @@ defmodule Bonfire.Me.Users do
       end
     circles =
       circles
-      # |> dump("circles for #{e(user, :character, :username, nil)}")
+      # |> info("circles for #{e(user, :character, :username, nil)}")
       |> Map.values()
     acls =
       acls
-      # |> dump("acls for #{e(user, :character, :username, nil)}")
+      # |> info("acls for #{e(user, :character, :username, nil)}")
       |> Map.values()
     named =
       (acls ++ circles)
@@ -413,6 +419,10 @@ defmodule Bonfire.Me.Users do
       raise RuntimeError,
         message: "invalid circle given in new user boundaries config: #{inspect(circle_id)}"
     end
+  end
+
+  def is_first_user? do
+    Queries.count() <1
   end
 
   def delete(users) when is_list(users) do

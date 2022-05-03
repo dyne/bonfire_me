@@ -1,4 +1,4 @@
-defmodule Bonfire.Me.Dashboard.Test do
+defmodule Bonfire.Me.Dashboard.EditProfileImagesTest do
   use Bonfire.Me.ConnCase
   alias Bonfire.Me.Fake
 
@@ -42,7 +42,7 @@ defmodule Bonfire.Me.Dashboard.Test do
     {view, doc} = floki_live(conn, next) #|> IO.inspect
 
     [style] = Floki.attribute(doc, "[data-id='upload_image']", "style")
-    assert style =~ "background-image: url('http" # has placeholder
+    refute style =~ "background-image: url('/data/uploads/"
 
     file = Path.expand("../../fixtures/icon.png", __DIR__)
 
