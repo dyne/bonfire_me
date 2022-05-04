@@ -1,11 +1,11 @@
 defmodule Bonfire.Me.UserCirclesTest do
 
-  use Bonfire.DataCase, async: true
+  use Bonfire.Me.DataCase, async: true
   alias Bonfire.Data.AccessControl.Circle
   alias Bonfire.Me.Fake
   alias Bonfire.Me.Users
   alias Bonfire.Boundaries.Circles
-  alias Bonfire.Repo
+  alias Bonfire.Common.Repo
 
   # test "listing instance-wide circles (which I am permitted to see) works" do
   #   user = fake_user!()
